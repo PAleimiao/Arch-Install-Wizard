@@ -7,6 +7,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 set -e
+declare -A CFG
 
 # ── 国际化 (i18n) ──
 declare -A I18N
@@ -553,7 +554,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 # ── 全局配置 ──
-declare -A CFG
+
 CFG[mode]=""
 CFG[disk]=""
 CFG[scheme]="auto"
