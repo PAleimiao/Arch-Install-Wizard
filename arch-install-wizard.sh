@@ -1072,7 +1072,89 @@ swapon ${disk}2"
 # ═══════════════════════════════════════════════════════════════
 
 set -e
-trap 'echo "$(t "[!] 安装中断于第 \$LINENO 行")"; exit 1' ERR
+
+# ── 急救菜单 ──
+emergency_menu() {
+    local error_line=\$LINENO
+    local error_cmd="\$BASH_COMMAND"
+    local error_log="/tmp/arch-install-error.log"
+
+    echo "[!!!] Installation failed at line \$error_line" > "\$error_log"
+    echo "Command: \$error_cmd" >> "\$error_log"
+    echo "Time: \$(date)" >> "\$error_log"
+    echo "Kernel: \$(uname -r)" >> "\$error_log"
+    echo "CPU: \$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)" >> "\$error_log"
+
+    while true; do
+        local choice=\$(dialog --title "[!!!] Installation Failed / An Zhuang Shi Bai" --menu "Choose action / Xuan Ze Cao Zuo:" 15 60 3 \
+            "ai" "🤖 AI Diagnosis / AI Zhen Duan (need API key)" \
+            "manual" "🔧 Manual installation / Shou Dong An Zhuang" \
+            "retry" "🔄 Retry installation / Chong Shi An Zhuang" 2>&1 >/dev/tty)
+
+        case "\$choice" in
+            ai)
+                ai_diagnose
+                ;;
+            manual)
+                dialog --msgbox "Exiting. You can manually complete the remaining steps.\nTui Chu. Ni Ke Yi Shou Dong Wan Cheng Sheng Yu Bu Zhou." 8 50
+                exit 1
+                ;;
+            retry)
+                dialog --msgbox "Retrying installation...\nZheng Zai Chong Shi An Zhuang..." 8 40
+                exec bash "\$0"
+                ;;
+            *)
+                exit 1
+                ;;
+        esac
+    done
+}
+
+ai_diagnose() {
+    local api_key=""
+    local api_key_file="/tmp/.ai_api_key"
+
+    if [[ -f "\$api_key_file" ]]; then
+        api_key=\$(cat "\$api_key_file")
+    else
+        api_key=\$(dialog --title "AI API Key" --inputbox "Enter your OpenAI/Claude API Key:\n(starts with sk- or sk-ant-)\nLeave empty to skip / Liu Kong Tiao Guo:" 12 60 2>&1 >/dev/tty)
+        if [[ -n "\$api_key" ]]; then
+            echo "\$api_key" > "\$api_key_file"
+        fi
+    fi
+
+    if [[ -z "\$api_key" ]]; then
+        dialog --msgbox "No API Key configured. Cannot use AI diagnosis.\nWei Pei Zhi API Key, Wu Fa Shi Yong AI Zhen Duan." 8 50
+        return 1
+    fi
+
+    local error_log="/tmp/arch-install-error.log"
+    local sysinfo="Arch Linux Live CD\nKernel: \$(uname -r)\nCPU: \$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)\nMemory: \$(free -h | awk '/Mem/{print \$2}')"
+
+    dialog --infobox "Requesting AI analysis, please wait...\nZheng Zai Qing Qiu AI Fen Xi, Qing Shao Hou..." 8 40
+
+    local response=\$(curl -s https://api.openai.com/v1/chat/completions \
+        -H "Authorization: Bearer \$api_key" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"model\": \"gpt-4o-mini\",
+            \"messages\": [
+                {\"role\": \"system\", \"content\": \"You are an Arch Linux installation expert. Analyze the error log and provide concise solutions in Chinese. Focus on practical fix steps. Keep under 300 words.\"},
+                {\"role\": \"user\", \"content\": \"System Info:\n\$sysinfo\n\nError Log:\n\$(cat \$error_log 2>/dev/null || echo 'No detailed log available')\"}
+            ],
+            \"temperature\": 0.3
+        }" 2>/dev/null)
+
+    local suggestion=\$(echo "\$response" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"//;s/"$//' | sed 's/\\n/\n/g')
+
+    if [[ -n "\$suggestion" ]]; then
+        echo "\$suggestion" > /tmp/ai_suggestion.txt
+        dialog --title "🤖 AI Diagnosis / AI Zhen Duan Jian Yi" --textbox /tmp/ai_suggestion.txt 20 70
+    else
+        dialog --msgbox "AI diagnosis failed. Possible causes:\n- Invalid API Key\n- No network connection\n- API rate limit\n\nError log saved to: \$error_log\n\nAI Zhen Duan Shi Bai. Ke Neng Yuan Yin:\n- API Key Wu Xiao\n- Wu Wang Luo Lian Jie\n- API Xian Liu" 14 60
+    fi
+}
+trap emergency_menu ERR
 
 echo "$(t "[AUTO] Arch Linux 安装开始...")"
 
